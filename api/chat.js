@@ -25,8 +25,6 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: 'OPENROUTER_API_KEY is not configured' });
     }
 
-    const TMDB_KEY = process.env.TMDB_API_KEY || "882e741f7283dc9ba1654d4692ec30f6";
-
     const models = [
         'nvidia/nemotron-3-super-120b-a12b:free',
         'tencent/hy3-preview:free',
@@ -37,9 +35,7 @@ export default async function handler(req, res) {
         'nvidia/nemotron-3-nano-30b-a3b:free',
         'google/gemma-4-31b-it:free',
         'nvidia/nemotron-nano-9b-v2:free',
-        'google/gemma-4-26b-a4b-it:free',
-        'nvidia/llama-nemotron-embed-vl-1b-v2:free',
-        'liquid/lfm-2.5-1.2b-thinking:free'
+        'google/gemma-4-26b-a4b-it:free'
     ];
 
     let lastError = null;
@@ -60,7 +56,7 @@ export default async function handler(req, res) {
                     "messages": [
                         {
                             "role": "system",
-                            "content": "You are a movie assistant for Tomito. Your goal is to help users find movies and TV shows. Keep your answers EXTREMELY SHORT and direct (max 2-3 sentences). When suggesting a movie or show, wrap the title in double asterisks like this: **Movie Title**. AI will automatically generate the correct links for you later."
+                            "content": "You are a movie assistant for Tomito. Your goal is to help users find movies and TV shows. Keep your answers EXTREMELY SHORT (max 1-2 sentences). When suggesting a movie or show, ALWAYS wrap the title in double asterisks like this: **Movie Title**. This is required for the system to show a movie card. Answer in Darija/Arabic if the user speaks it."
                         },
                         {
                             "role": "user",
@@ -79,42 +75,10 @@ export default async function handler(req, res) {
             }
 
             if (data.choices && data.choices[0] && data.choices[0].message) {
-                let reply = data.choices[0].message.content;
-
-                // --- DYNAMIC ENRICHMENT ---
-                try {
-                    // Find all bolded titles: **Title**
-                    const boldRegex = /\*\*(.*?)\*\*/g;
-                    const matches = [...reply.matchAll(boldRegex)];
-                    const seen = new Set();
-
-                    for (const match of matches) {
-                        const title = match[1];
-                        if (seen.has(title)) continue;
-                        seen.add(title);
-
-                        const searchRes = await fetch(`https://api.themoviedb.org/3/search/multi?api_key=${TMDB_KEY}&query=${encodeURIComponent(title)}&language=en-US`);
-                        const searchData = await searchRes.json();
-
-                        if (searchData.results && searchData.results.length > 0) {
-                            const result = searchData.results[0];
-                            if (result.media_type === 'movie' || result.media_type === 'tv') {
-                                const type = result.media_type;
-                                const id = result.id;
-                                const originalTitle = result.title || result.name;
-                                const slug = originalTitle.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
-                                const correctUrl = `https://tv.tomito.xyz/${type}/${id}-${slug}`;
-
-                                // Replace all occurrences of the bolded title with a markdown link
-                                reply = reply.split(match[0]).join(`[${originalTitle}](${correctUrl})`);
-                            }
-                        }
-                    }
-                } catch (enrichError) {
-                    console.error("Enrichment failed:", enrichError);
-                }
-
-                return res.status(200).json({ reply, model });
+                return res.status(200).json({
+                    reply: data.choices[0].message.content,
+                    model
+                });
             } else {
                 lastError = { message: 'Unexpected API response structure', data };
                 continue;
