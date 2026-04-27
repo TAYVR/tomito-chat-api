@@ -20,103 +20,79 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Message is required' });
     }
 
+    const API_KEY = process.env.OPENROUTER_API_KEY;
+    if (!API_KEY) {
+        return res.status(500).json({ error: 'OPENROUTER_API_KEY is not configured' });
+    }
 
+    const models = [
+        'nvidia/nemotron-3-super-120b-a12b:free',
+        'tencent/hy3-preview:free',
+        'inclusionai/ling-2.6-1t:free',
+        'inclusionai/ling-2.6-flash:free',
+        'minimax/minimax-m2.5:free',
+        'openai/gpt-oss-120b:free',
+        'nvidia/nemotron-3-nano-30b-a3b:free',
+        'google/gemma-4-31b-it:free',
+        'nvidia/nemotron-nano-9b-v2:free',
+        'google/gemma-4-26b-a4b-it:free',
+        'nvidia/llama-nemotron-embed-vl-1b-v2:free',
+        'liquid/lfm-2.5-1.2b-thinking:free'
+    ];
 
-    const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY;
-    const GROQ_KEY = process.env.GROQ_API_KEY;
+    let lastError = null;
 
-    const systemPrompt = "You are a movie assistant for Tomito. Keep answers EXTREMELY SHORT (1-2 sentences). Wrap movie/TV titles in double asterisks: **Title**. Use Darija/Arabic if the user speaks it.";
-
-    const isShortQuery = message.length < 150;
-    let reply = null;
-    let usedModel = null;
-
-    // --- STRATEGY 1: TRY GROQ FOR SHORT QUERIES ---
-    if (isShortQuery && GROQ_KEY) {
+    for (const model of models) {
         try {
-            console.log("Routing to Groq (Short Query)...");
-            const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+            console.log(`Trying model: ${model}`);
+            const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
                 method: "POST",
                 headers: {
-                    "Authorization": `Bearer ${GROQ_KEY}`,
+                    "Authorization": `Bearer ${API_KEY}`,
                     "Content-Type": "application/json",
+                    "HTTP-Referer": "https://tomito-assistant.vercel.app",
+                    "X-Title": "Tomito Movie Assistant",
                 },
                 body: JSON.stringify({
-                    "model": "llama-3.1-70b-versatile",
+                    "model": model,
                     "messages": [
-                        { "role": "system", "content": systemPrompt },
-                        { "role": "user", "content": message }
+                        {
+                            "role": "system",
+                            "content": "You are a movie assistant for Tomito. Your goal is to help users find movies and TV shows. Keep your answers EXTREMELY SHORT and direct (max 2-3 sentences) to save time and tokens. Provide links in this format: [Title](https://tv.tomito.xyz/movie/ID-slug). For TV shows, use: [Title](https://tv.tomito.xyz/tv/ID-slug). Answer in Darija/Arabic if the user speaks it, but keep links in English/TMDB format."
+                        },
+                        {
+                            "role": "user",
+                            "content": message
+                        }
                     ],
-                    "temperature": 0.7,
-                    "max_tokens": 150
                 })
             });
 
             const data = await response.json();
-            if (data.choices?.[0]?.message) {
-                reply = data.choices[0].message.content;
-                usedModel = "groq/llama-3.1";
+
+            if (data.error) {
+                console.warn(`Model ${model} failed:`, data.error.message || data.error);
+                lastError = data.error;
+                continue;
             }
+
+            if (data.choices && data.choices[0] && data.choices[0].message) {
+                const reply = data.choices[0].message.content;
+                return res.status(200).json({ reply, model });
+            } else {
+                lastError = { message: 'Unexpected API response structure', data };
+                continue;
+            }
+
         } catch (error) {
-            console.error("Groq failed, will fallback to OpenRouter:", error);
+            console.error(`Catch Error with ${model}:`, error);
+            lastError = error;
+            continue;
         }
     }
 
-    // --- STRATEGY 2: TRY OPENROUTER (FOR LONG QUERIES OR GROQ FALLBACK) ---
-    if (!reply && OPENROUTER_KEY) {
-        console.log("Routing to OpenRouter...");
-        const models = isShortQuery
-            ? [
-                'nvidia/nemotron-nano-9b-v2:free',
-                'inclusionai/ling-2.6-flash:free',
-                'nvidia/nemotron-3-nano-30b-a3b:free',
-                'google/gemma-2-9b-it:free'
-            ]
-            : [
-                'nvidia/nemotron-3-super-120b-a12b:free',
-                'openai/gpt-oss-120b:free',
-                'tencent/hy3-preview:free',
-                'inclusionai/ling-2.6-1t:free',
-                'minimax/minimax-m2.5:free',
-                'google/gemma-4-31b-it:free',
-                'google/gemma-4-26b-a4b-it:free'
-            ];
-
-        for (const model of models) {
-            try {
-                console.log(`Trying OpenRouter model: ${model}`);
-                const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-                    method: "POST",
-                    headers: {
-                        "Authorization": `Bearer ${OPENROUTER_KEY}`,
-                        "Content-Type": "application/json",
-                        "HTTP-Referer": "https://tomito-assistant.vercel.app",
-                        "X-Title": "Tomito Movie Assistant",
-                    },
-                    body: JSON.stringify({
-                        "model": model,
-                        "messages": [
-                            { "role": "system", "content": systemPrompt },
-                            { "role": "user", "content": message }
-                        ],
-                    })
-                });
-
-                const data = await response.json();
-                if (data.choices?.[0]?.message) {
-                    reply = data.choices[0].message.content;
-                    usedModel = model;
-                    break;
-                }
-            } catch (error) {
-                console.error(`OpenRouter model ${model} failed:`, error);
-            }
-        }
-    }
-
-    if (reply) {
-        return res.status(200).json({ reply, model: usedModel });
-    }
-
-    return res.status(500).json({ error: 'No models available or API keys missing' });
+    return res.status(500).json({
+        error: 'All OpenRouter models failed',
+        details: lastError
+    });
 }
