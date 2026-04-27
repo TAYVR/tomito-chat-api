@@ -1,48 +1,29 @@
 export default async function handler(req, res) {
-    // 1. Set CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
-    // 2. Handle preflight (OPTIONS)
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
-    }
+    if (req.method === 'OPTIONS') return res.status(200).end();
+    if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-    // 3. Ensure the request is POST
-    if (req.method !== 'POST') {
-        return res.status(405).json({ error: 'Method not allowed' });
-    }
-
-    // 4. Read the message from the Body
     const { message } = req.body;
-    if (!message) {
-        return res.status(400).json({ error: 'Message is required' });
-    }
+    if (!message) return res.status(400).json({ error: 'Message is required' });
 
     const API_KEY = process.env.OPENROUTER_API_KEY;
-    if (!API_KEY) {
-        return res.status(500).json({ error: 'OPENROUTER_API_KEY is not configured' });
-    }
+    if (!API_KEY) return res.status(500).json({ error: 'OPENROUTER_API_KEY not set' });
 
+    // FAST FREE MODELS FIRST
     const models = [
-        'nvidia/nemotron-3-super-120b-a12b:free',
-        'tencent/hy3-preview:free',
-        'inclusionai/ling-2.6-1t:free',
-        'inclusionai/ling-2.6-flash:free',
-        'minimax/minimax-m2.5:free',
-        'openai/gpt-oss-120b:free',
-        'nvidia/nemotron-3-nano-30b-a3b:free',
-        'google/gemma-4-31b-it:free',
-        'nvidia/nemotron-nano-9b-v2:free',
-        'google/gemma-4-26b-a4b-it:free'
+        'google/gemma-2-9b-it:free',
+        'meta-llama/llama-3.1-8b-instruct:free',
+        'mistralai/mistral-7b-instruct:free',
+        'google/gemma-2-27b-it:free',
+        'qwen/qwen-2-7b-instruct:free',
+        'microsoft/phi-3-mini-128k-instruct:free'
     ];
-
-    let lastError = null;
 
     for (const model of models) {
         try {
-            console.log(`Trying model: ${model}`);
             const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
                 method: "POST",
                 headers: {
@@ -56,43 +37,21 @@ export default async function handler(req, res) {
                     "messages": [
                         {
                             "role": "system",
-                            "content": "You are a movie assistant for Tomito. Your goal is to help users find movies and TV shows. Keep your answers EXTREMELY SHORT (max 1-2 sentences). When suggesting a movie or show, ALWAYS wrap the title in double asterisks like this: **Movie Title**. This is required for the system to show a movie card. Answer in Darija/Arabic if the user speaks it."
+                            "content": "Tomito Movie Assistant. Short responses (1 sentence). Wrap movie titles in **Title**. Speak Darija/Arabic or french or english."
                         },
-                        {
-                            "role": "user",
-                            "content": message
-                        }
+                        { "role": "user", "content": message }
                     ],
                 })
             });
 
             const data = await response.json();
-
-            if (data.error) {
-                console.warn(`Model ${model} failed:`, data.error.message || data.error);
-                lastError = data.error;
-                continue;
+            if (data.choices?.[0]?.message) {
+                return res.status(200).json({ reply: data.choices[0].message.content, model });
             }
-
-            if (data.choices && data.choices[0] && data.choices[0].message) {
-                return res.status(200).json({
-                    reply: data.choices[0].message.content,
-                    model
-                });
-            } else {
-                lastError = { message: 'Unexpected API response structure', data };
-                continue;
-            }
-
         } catch (error) {
-            console.error(`Catch Error with ${model}:`, error);
-            lastError = error;
-            continue;
+            console.error(`Error with ${model}:`, error);
         }
     }
 
-    return res.status(500).json({
-        error: 'All OpenRouter models failed',
-        details: lastError
-    });
+    return res.status(500).json({ error: 'All models failed' });
 }
