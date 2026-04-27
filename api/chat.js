@@ -20,7 +20,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Message is required' });
     }
 
-    
+
 
     const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY;
     const GROQ_KEY = process.env.GROQ_API_KEY;
@@ -66,8 +66,21 @@ export default async function handler(req, res) {
     if (!reply && OPENROUTER_KEY) {
         console.log("Routing to OpenRouter...");
         const models = isShortQuery
-            ? ['google/gemma-2-9b-it:free', 'meta-llama/llama-3.1-8b-instruct:free'] // Fast models for short fallback
-            : ['google/gemma-2-27b-it:free', 'mistralai/mistral-large-2407', 'anthropic/claude-3-haiku']; // Smarter models for long queries
+            ? [
+                'nvidia/nemotron-nano-9b-v2:free',
+                'inclusionai/ling-2.6-flash:free',
+                'nvidia/nemotron-3-nano-30b-a3b:free',
+                'google/gemma-2-9b-it:free'
+            ]
+            : [
+                'nvidia/nemotron-3-super-120b-a12b:free',
+                'openai/gpt-oss-120b:free',
+                'tencent/hy3-preview:free',
+                'inclusionai/ling-2.6-1t:free',
+                'minimax/minimax-m2.5:free',
+                'google/gemma-4-31b-it:free',
+                'google/gemma-4-26b-a4b-it:free'
+            ];
 
         for (const model of models) {
             try {
