@@ -15,7 +15,12 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: 'GEMINI_API_KEY is not configured' });
     }
 
-    const models = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+    const models = [
+        'gemini-2.0-flash',
+        'gemini-1.5-flash-latest',
+        'gemini-1.5-pro-latest',
+        'gemini-1.5-flash'
+    ];
     let lastError = null;
 
     for (const model of models) {
@@ -35,10 +40,10 @@ export default async function handler(req, res) {
                 console.warn(`Model ${model} failed:`, data.error.message);
                 lastError = data.error;
 
-                // If it's a quota error, try next model
-                if (data.error.code === 429) continue;
+                // If it's a quota error (429) OR model not found (404), try next model
+                if (data.error.code === 429 || data.error.code === 404) continue;
 
-                // For other errors, we might want to stop, but let's try fallback anyway if it's not a 400
+                // For other errors, try fallback anyway
                 if (data.error.code >= 500) continue;
 
                 return res.status(data.error.code || 500).json({ error: "Google API Error", details: data.error });
