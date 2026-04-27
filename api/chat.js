@@ -15,33 +15,37 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: 'GEMINI_API_KEY is not configured' });
     }
 
-    try {
-        // 3. التواصل مع Gemini
-        // بدل هاد السطر:
-        // const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`, {
+ try {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        contents: [{ parts: [{ text: `You are a movie assistant for Tomito. Answer this: ${message}` }] }] 
+      })
+    });
 
-        // بهذا السطر (استعمل gemini-1.5-flash-latest):
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${API_KEY}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{ parts: [{ text: `You are a movie assistant for Tomito. Answer this: ${message}` }] }]
-            })
-        });
+    const data = await response.json();
+    
+    // هادي أهم خطوة: كنشوفو شنو جاب الـ API قبل ما نحكمو عليه
+    console.log("--- GOOGLE API FULL RESPONSE ---");
+    console.log(JSON.stringify(data, null, 2));
+    console.log("--------------------------------");
 
-        const data = await response.json();
-
-        // 4. إرسال الجواب مع التحقق من وجود بيانات
-        if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts[0]) {
-            const reply = data.candidates[0].content.parts[0].text;
-            res.status(200).json({ reply });
-        } else {
-            console.error('Gemini API Error:', data);
-            res.status(500).json({ error: 'Invalid response from AI' });
-        }
-
-    } catch (error) {
-        console.error('Chat API Error:', error);
-        res.status(500).json({ error: 'Failed to connect to AI' });
+    // التحقق من وجود Error من Google مباشرة
+    if (data.error) {
+       return res.status(500).json({ error: "Google API Error", details: data.error });
     }
+
+    // التحقق من الـ Structure
+    if (data.candidates && data.candidates[0] && data.candidates[0].content) {
+      const reply = data.candidates[0].content.parts[0].text;
+      return res.status(200).json({ reply });
+    } else {
+      return res.status(500).json({ error: 'Unexpected JSON Structure', data: data });
+    }
+    
+  } catch (error) {
+    console.error('Catch Error:', error);
+    return res.status(500).json({ error: 'Failed to connect to AI' });
+  }
 }
