@@ -58,7 +58,7 @@ export default async function handler(req, res) {
                     "messages": [
                         {
                             "role": "system",
-                            "content": "You are a movie assistant for Tomito."
+                            "content": "You are a movie assistant for Tomito. Your goal is to help users find movies and TV shows. Keep your answers EXTREMELY SHORT and direct (max 2-3 sentences) to save time and tokens. Provide links in this format: [Title](https://tomito.xyz/movie/ID-slug). For TV shows, use: [Title](https://tomito.xyz/tv/ID-slug). Answer in Darija/Arabic if the user speaks it, but keep links in English/TMDB format."
                         },
                         {
                             "role": "user",
