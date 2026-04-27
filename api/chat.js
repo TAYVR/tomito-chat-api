@@ -10,51 +10,69 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Message is required' });
     }
 
-    const API_KEY = process.env.GEMINI_API_KEY;
+    const API_KEY = process.env.OPENROUTER_API_KEY;
     if (!API_KEY) {
-        return res.status(500).json({ error: 'GEMINI_API_KEY is not configured' });
+        return res.status(500).json({ error: 'OPENROUTER_API_KEY is not configured' });
     }
 
     const models = [
-        'gemini-2.0-flash',
-        'gemini-1.5-flash-latest',
-        'gemini-1.5-pro-latest',
-        'gemini-1.5-flash'
+        'nvidia/nemotron-3-super-120b-a12b:free',
+        'tencent/hy3-preview:free',
+        'inclusionai/ling-2.6-1t:free',
+        'inclusionai/ling-2.6-flash:free',
+        'minimax/minimax-m2.5:free',
+        'openai/gpt-oss-120b:free',
+        'nvidia/nemotron-3-nano-30b-a3b:free',
+        'google/gemma-4-31b-it:free',
+        'nvidia/nemotron-nano-9b-v2:free',
+        'google/gemma-4-26b-a4b-it:free',
+        'nvidia/llama-nemotron-embed-vl-1b-v2:free',
+        'liquid/lfm-2.5-1.2b-thinking:free'
     ];
+
     let lastError = null;
 
     for (const model of models) {
         try {
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${API_KEY}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+            console.log(`Trying model: ${model}`);
+            const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${API_KEY}`,
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://tomito-assistant.vercel.app", // Optional site URL
+                    "X-Title": "Tomito Movie Assistant", // Optional site name
+                },
                 body: JSON.stringify({
-                    contents: [{ parts: [{ text: `You are a movie assistant for Tomito. Answer this: ${message}` }] }]
+                    "model": model,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": "You are a movie assistant for Tomito."
+                        },
+                        {
+                            "role": "user",
+                            "content": message
+                        }
+                    ],
                 })
             });
 
             const data = await response.json();
 
-            // Check for Google API Error
+            // Check for OpenRouter error
             if (data.error) {
-                console.warn(`Model ${model} failed:`, data.error.message);
+                console.warn(`Model ${model} failed:`, data.error.message || data.error);
                 lastError = data.error;
-
-                // If it's a quota error (429) OR model not found (404), try next model
-                if (data.error.code === 429 || data.error.code === 404) continue;
-
-                // For other errors, try fallback anyway
-                if (data.error.code >= 500) continue;
-
-                return res.status(data.error.code || 500).json({ error: "Google API Error", details: data.error });
+                continue; // Try next model on any error (quota, 404, etc.)
             }
 
-            // Check Structure
-            if (data.candidates && data.candidates[0] && data.candidates[0].content) {
-                const reply = data.candidates[0].content.parts[0].text;
-                return res.status(200).json({ reply, model }); // Include model name for debugging
+            // Parse response (OpenAI format)
+            if (data.choices && data.choices[0] && data.choices[0].message) {
+                const reply = data.choices[0].message.content;
+                return res.status(200).json({ reply, model });
             } else {
-                lastError = { message: 'Unexpected JSON Structure', data };
+                lastError = { message: 'Unexpected API response structure', data };
                 continue;
             }
 
@@ -67,7 +85,7 @@ export default async function handler(req, res) {
 
     // If we get here, all models failed
     return res.status(500).json({
-        error: 'All AI models failed or exceeded quota',
+        error: 'All OpenRouter models failed',
         details: lastError
     });
 }
