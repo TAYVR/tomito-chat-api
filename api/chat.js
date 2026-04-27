@@ -20,6 +20,8 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Message is required' });
     }
 
+    
+
     const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY;
     const GROQ_KEY = process.env.GROQ_API_KEY;
 
